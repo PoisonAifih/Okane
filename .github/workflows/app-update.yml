@@ -1,0 +1,27 @@
+# Push to main with app/ changes -> phones on the "preview" channel get it on next launch.
+name: App OTA update
+
+on:
+  push:
+    branches: [main]
+    paths: ["app/**"]
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - run: npm ci
+      - run: eas update --channel preview --auto --non-interactive
