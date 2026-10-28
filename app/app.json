@@ -9,6 +9,9 @@
     "runtimeVersion": {
       "policy": "appVersion"
     },
+    "updates": {
+      "url": "https://u.expo.dev/8ad8da45-15ee-4dad-bacd-8ddfd5f5fb99"
+    },
     "ios": {
       "supportsTablet": true
     },
@@ -38,6 +41,12 @@
       ],
       "expo-font",
       "@react-native-community/datetimepicker"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "8ad8da45-15ee-4dad-bacd-8ddfd5f5fb99"
+      }
+    },
+    "owner": "poisonaifihs-team"
   }
 }
