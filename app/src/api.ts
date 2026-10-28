@@ -105,6 +105,22 @@ function imageForm(asset: ImagePicker.ImagePickerAsset) {
   return form;
 }
 
+function xhr(method: string, url: string, headers: Record<string, string>, body: FormData) {
+  return new Promise<{ status: number; body: any }>((resolve, reject) => {
+    const r = new XMLHttpRequest();
+    r.open(method, url);
+    for (const [k, v] of Object.entries(headers)) r.setRequestHeader(k, v);
+    r.onload = () => {
+      let parsed = null;
+      try { parsed = JSON.parse(r.responseText); } catch {}
+      resolve({ status: r.status, body: parsed });
+    };
+    r.onerror = () => reject(new Error('Network request failed'));
+    r.ontimeout = () => reject(new Error('Request timed out'));
+    r.send(body);
+  });
+}
+
 export class Api {
   constructor(private c: Config) {}
 
@@ -113,14 +129,18 @@ export class Api {
   }
 
   private async req<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const res = await fetch(this.c.serverUrl.replace(/\/+$/, '') + path, {
-      ...init,
-      headers: { Authorization: `Bearer ${this.c.serverToken}`, ...(init.headers as Record<string, string>) },
-    });
-    const body = await res.json().catch(() => null);
-    if (!res.ok) {
+    const url = this.c.serverUrl.replace(/\/+$/, '') + path;
+    const headers = { Authorization: `Bearer ${this.c.serverToken}`, ...(init.headers as Record<string, string>) };
+    // Expo's fetch can't send React Native's { uri } file parts, so phone uploads go through XMLHttpRequest.
+    const { status, body } = init.body instanceof FormData && Platform.OS !== 'web'
+      ? await xhr(init.method ?? 'POST', url, headers, init.body)
+      : await fetch(url, { ...init, headers }).then(async (res) => ({
+        status: res.status,
+        body: await res.json().catch(() => null),
+      }));
+    if (status < 200 || status >= 300) {
       const detail = body?.detail;
-      throw new Error(typeof detail === 'string' ? detail : `Server error ${res.status}`);
+      throw new Error(typeof detail === 'string' ? detail : `Server error ${status}`);
     }
     return body as T;
   }
