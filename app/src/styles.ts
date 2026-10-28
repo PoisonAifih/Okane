@@ -1,21 +1,35 @@
 import { StyleSheet } from 'react-native';
 
-export const colors = { bg: '#f6f7f9', card: '#fff', text: '#1b1f24', muted: '#68707a', accent: '#1f7a5c', border: '#dde1e6', danger: '#c0392b' };
+// Bakery-sticker look: cream paper, ink outlines, dusty blue + brick red.
+export const colors = {
+  bg: '#f4ecd8', card: '#fffaee', text: '#2f3445', muted: '#8a8170', ink: '#2f3445',
+  blue: '#8fb2d3', blueSoft: '#dce8f3', red: '#b4343c', accent: '#b4343c', border: '#2f3445', danger: '#b4343c',
+};
+
+export const fonts = { hand: 'Gaegu_400Regular', handBold: 'Gaegu_700Bold' };
+
+const outline = { borderWidth: 1.5, borderColor: colors.ink };
 
 export const s = StyleSheet.create({
-  page: { padding: 16, paddingTop: 56, gap: 8, backgroundColor: colors.bg, flexGrow: 1 },
-  title: { fontSize: 24, fontWeight: '700', color: colors.text, marginBottom: 8 },
-  label: { fontSize: 13, fontWeight: '600', color: colors.muted, marginTop: 8 },
-  hint: { fontSize: 12, color: colors.muted },
-  input: { backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 12, fontSize: 16, color: colors.text },
+  page: { padding: 16, paddingTop: 56, gap: 8, backgroundColor: colors.bg, flexGrow: 1, width: '100%', maxWidth: 560, alignSelf: 'center' },
+  title: { fontSize: 34, fontFamily: fonts.handBold, color: colors.red, marginBottom: 4 },
+  label: { fontSize: 18, fontFamily: fonts.handBold, color: colors.ink, marginTop: 8 },
+  hint: { fontSize: 15, fontFamily: fonts.hand, color: colors.muted },
+  input: { ...outline, backgroundColor: colors.card, borderRadius: 14, padding: 12, fontSize: 16, color: colors.text },
   row: { flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 12 },
-  button: { backgroundColor: colors.accent, borderRadius: 8, paddingVertical: 14, paddingHorizontal: 16, alignItems: 'center' },
-  buttonText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  buttonGhost: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border },
-  buttonGhostText: { color: colors.text, fontWeight: '600', fontSize: 15 },
-  card: { backgroundColor: colors.card, borderRadius: 10, padding: 14, borderWidth: 1, borderColor: colors.border },
-  chip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card },
-  chipOn: { backgroundColor: colors.accent, borderColor: colors.accent },
-  chipText: { color: colors.text, fontSize: 13 },
-  chipTextOn: { color: '#fff', fontWeight: '600' },
+  button: { ...outline, backgroundColor: colors.red, borderRadius: 18, paddingVertical: 12, paddingHorizontal: 16, alignItems: 'center' },
+  buttonText: { color: '#fffaee', fontFamily: fonts.handBold, fontSize: 20 },
+  buttonGhost: { backgroundColor: colors.card },
+  buttonGhostText: { color: colors.ink, fontFamily: fonts.handBold, fontSize: 20 },
+  card: { ...outline, backgroundColor: colors.card, borderRadius: 18, padding: 14 },
+  // Blue sticker with a stitched inner border, like the banner cards.
+  blueCard: { ...outline, backgroundColor: colors.blue, borderRadius: 18, padding: 6 },
+  stitch: { borderWidth: 1.5, borderColor: '#fffaee', borderStyle: 'dashed', borderRadius: 13, padding: 12 },
+  ribbon: { backgroundColor: colors.red, borderRadius: 10, paddingVertical: 6, paddingHorizontal: 12, flexDirection: 'row', justifyContent: 'space-between' },
+  ribbonText: { color: '#fffaee', fontFamily: fonts.handBold, fontSize: 17 },
+  money: { fontFamily: fonts.handBold, color: colors.ink, fontSize: 19 },
+  chip: { ...outline, paddingVertical: 4, paddingHorizontal: 12, borderRadius: 16, backgroundColor: colors.card },
+  chipOn: { backgroundColor: colors.blue },
+  chipText: { color: colors.ink, fontSize: 16, fontFamily: fonts.hand },
+  chipTextOn: { fontFamily: fonts.handBold },
 });

@@ -1,35 +1,49 @@
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { Api, Config, saveConfig } from './api';
-import { s } from './styles';
+import { ActivityIndicator, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { AI_PROVIDERS, AiProvider, Api, Config, saveConfig } from './api';
+import { notify } from './notify';
+import { colors, s } from './styles';
 
 export function SetupScreen({ initial, onDone, onCancel }: {
   initial: Config | null;
   onDone: (c: Config) => void;
   onCancel?: () => void;
 }) {
-  const [serverUrl, setServerUrl] = useState(initial?.serverUrl ?? 'https://');
+  const [serverUrl, setServerUrl] = useState(initial?.serverUrl ?? (Platform.OS === 'web' ? window.location.origin : 'https://'));
   const [serverToken, setServerToken] = useState(initial?.serverToken ?? '');
-  const [anthropicKey, setAnthropicKey] = useState(initial?.anthropicKey ?? '');
+  const [aiProvider, setAiProvider] = useState<AiProvider>(initial?.aiProvider ?? '');
+  const [aiKey, setAiKey] = useState(initial?.aiKey ?? '');
+  const [aiModel, setAiModel] = useState(initial?.aiModel ?? '');
+  const provider = AI_PROVIDERS.find((p) => p.id === aiProvider)!;
   const [busy, setBusy] = useState(false);
 
   async function save() {
-    const c = { serverUrl: serverUrl.trim(), serverToken: serverToken.trim(), anthropicKey: anthropicKey.trim() };
+    const c: Config = {
+      serverUrl: serverUrl.trim(), serverToken: serverToken.trim(), aiProvider,
+      aiKey: provider.needsKey ? aiKey.trim() : '',
+      aiModel: provider.modelHint ? aiModel.trim() : '',
+    };
+    if (provider.needsKey && !c.aiKey) return notify(`Enter your ${provider.label} API key`);
+    if (provider.modelHint && !c.aiModel) return notify(`Enter a ${provider.label} model`, provider.modelHint);
     setBusy(true);
     try {
-      await new Api(c).categories(); // checks URL + token before saving
+      const api = new Api(c);
+      await api.categories(); // checks URL + token before saving
+      if (aiProvider === 'server' && !(await api.capabilities()).server_scan) {
+        throw new Error('Your server has no Claude Code set up (OKANE_CLAUDE_CLI). Pick another option.');
+      }
       await saveConfig(c);
       onDone(c);
     } catch (e) {
-      Alert.alert("Can't reach your server", String((e as Error).message));
+      notify("Can't reach your server", String((e as Error).message));
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <ScrollView contentContainerStyle={s.page} keyboardShouldPersistTaps="handled">
-      <Text style={s.title}>Okane setup</Text>
+    <ScrollView style={{ backgroundColor: colors.bg }} contentContainerStyle={s.page} keyboardShouldPersistTaps="handled">
+      <Text style={s.title}>okane setup ✿</Text>
 
       <Text style={s.label}>Server URL</Text>
       <TextInput style={s.input} value={serverUrl} onChangeText={setServerUrl}
@@ -39,12 +53,35 @@ export function SetupScreen({ initial, onDone, onCancel }: {
       <TextInput style={s.input} value={serverToken} onChangeText={setServerToken}
         autoCapitalize="none" autoCorrect={false} secureTextEntry placeholder="OKANE_TOKEN from your VPS" />
 
-      <Text style={s.label}>Anthropic API key (optional)</Text>
-      <TextInput style={s.input} value={anthropicKey} onChangeText={setAnthropicKey}
-        autoCapitalize="none" autoCorrect={false} secureTextEntry placeholder="sk-ant-…" />
+      <Text style={s.label}>Read screenshots with (optional)</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+        {AI_PROVIDERS.map((p) => (
+          <Pressable key={p.id} style={[s.chip, p.id === aiProvider && s.chipOn]} onPress={() => setAiProvider(p.id)}>
+            <Text style={[s.chipText, p.id === aiProvider && s.chipTextOn]}>{p.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {provider.needsKey && (
+        <>
+          <Text style={s.label}>{provider.label} API key</Text>
+          <TextInput style={s.input} value={aiKey} onChangeText={setAiKey}
+            autoCapitalize="none" autoCorrect={false} secureTextEntry placeholder="paste your key" />
+        </>
+      )}
+      {provider.modelHint && (
+        <>
+          <Text style={s.label}>Model (must read images)</Text>
+          <TextInput style={s.input} value={aiModel} onChangeText={setAiModel}
+            autoCapitalize="none" autoCorrect={false} placeholder={provider.modelHint} />
+        </>
+      )}
       <Text style={s.hint}>
-        With a key you can scan payment screenshots. Without one, you add expenses by hand.
-        The key stays on this phone and is sent to your server only while a screenshot is being read.
+        {aiProvider === ''
+          ? 'Without one, you add expenses by hand.'
+          : aiProvider === 'server'
+            ? 'Your server reads screenshots with its own Claude Code login. No key needed here.'
+            : 'The key stays on this device and is sent to your server only while a screenshot is being read.'}
       </Text>
 
       <View style={s.row}>
@@ -54,7 +91,7 @@ export function SetupScreen({ initial, onDone, onCancel }: {
           </Pressable>
         )}
         <Pressable style={[s.button, { flex: 1 }]} onPress={save} disabled={busy}>
-          {busy ? <ActivityIndicator color="#fff" /> : <Text style={s.buttonText}>Save</Text>}
+          {busy ? <ActivityIndicator color={colors.card} /> : <Text style={s.buttonText}>Save</Text>}
         </Pressable>
       </View>
     </ScrollView>

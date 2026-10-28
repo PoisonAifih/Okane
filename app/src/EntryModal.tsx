@@ -1,9 +1,30 @@
-import { useState } from 'react';
-import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { Api, Draft, localIso, Transaction } from './api';
+import * as ImagePicker from 'expo-image-picker';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Image, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Api, Draft, localIso, PAYMENT_METHODS, PaymentMethod, Transaction } from './api';
+import { confirmDestructive, notify } from './notify';
 import { colors, s } from './styles';
 
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
+
+/** Native Image can send the auth header; on web we fetch it ourselves and show a blob URL. */
+function ReceiptImage({ api, id }: { api: Api; id: number }) {
+  const [webUri, setWebUri] = useState<string | null>(null);
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    let url: string | null = null;
+    const { uri, headers } = api.imageSource(id);
+    fetch(uri, { headers })
+      .then((r) => (r.ok ? r.blob() : Promise.reject()))
+      .then((b) => setWebUri((url = URL.createObjectURL(b))))
+      .catch(() => {});
+    return () => { if (url) URL.revokeObjectURL(url); };
+  }, [api, id]);
+
+  const source = Platform.OS === 'web' ? (webUri ? { uri: webUri } : null) : api.imageSource(id);
+  if (!source) return null;
+  return <Image source={source} style={[s.card, { width: '100%', height: 420, padding: 0 }]} resizeMode="contain" />;
+}
 
 /** Add an expense by hand (tx = null) or view/correct an existing one. */
 export function EntryModal({ api, categories, tx, onClose, onSaved }: {
@@ -17,8 +38,16 @@ export function EntryModal({ api, categories, tx, onClose, onSaved }: {
   const [category, setCategory] = useState(tx?.category ?? '');
   const [recipient, setRecipient] = useState(tx?.recipient ?? '');
   const [remark, setRemark] = useState(tx?.remark ?? '');
+  const [method, setMethod] = useState<PaymentMethod>(tx?.payment_method ?? '');
   const [occurredAt, setOccurredAt] = useState(tx?.occurred_at ?? localIso());
+  // 'keep' leaves the stored screenshot alone; a picked asset is uploaded on save.
+  const [image, setImage] = useState<'keep' | 'remove' | ImagePicker.ImagePickerAsset>('keep');
   const [busy, setBusy] = useState(false);
+
+  async function pickImage() {
+    const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
+    if (!picked.canceled) setImage(picked.assets[0]);
+  }
 
   async function run(action: () => Promise<unknown>) {
     setBusy(true);
@@ -26,7 +55,7 @@ export function EntryModal({ api, categories, tx, onClose, onSaved }: {
       await action();
       onSaved();
     } catch (e) {
-      Alert.alert('Error', String((e as Error).message));
+      notify('Error', String((e as Error).message));
     } finally {
       setBusy(false);
     }
@@ -34,24 +63,30 @@ export function EntryModal({ api, categories, tx, onClose, onSaved }: {
 
   function save() {
     const value = Number(amount.replace(/[^\d.]/g, ''));
-    if (!value) return Alert.alert('Enter an amount');
-    if (!category) return Alert.alert('Pick a category');
-    if (!ISO.test(occurredAt)) return Alert.alert('Date must look like 2026-10-28T13:45');
-    const d: Draft = { amount: value, category, recipient: recipient.trim(), remark: remark.trim(), occurred_at: occurredAt };
-    run(() => (tx ? api.update(tx.id, d) : api.addManual(d)));
+    if (!value) return notify('Enter an amount');
+    if (!category) return notify('Pick a category');
+    if (!ISO.test(occurredAt)) return notify('Date must look like 2026-10-28T13:45');
+    const d: Draft = { amount: value, category, recipient: recipient.trim(), remark: remark.trim(), occurred_at: occurredAt, payment_method: method };
+    run(async () => {
+      const saved = tx ? await api.update(tx.id, d) : await api.addManual(d);
+      try {
+        if (typeof image === 'object') await api.attachImage(saved.id, image);
+        else if (image === 'remove' && tx?.has_image) await api.removeImage(saved.id);
+      } catch (e) {
+        // the expense itself is saved; don't leave the form open or a retry would add it twice
+        notify('Saved, but the screenshot was not', String((e as Error).message));
+      }
+    });
   }
 
   function confirmDelete() {
-    Alert.alert('Delete this entry?', undefined, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => run(() => api.remove(tx!.id)) },
-    ]);
+    confirmDestructive('Delete this entry?', 'Delete', () => run(() => api.remove(tx!.id)));
   }
 
   return (
     <Modal animationType="slide" onRequestClose={onClose}>
-      <ScrollView contentContainerStyle={s.page} keyboardShouldPersistTaps="handled">
-        <Text style={s.title}>{tx ? 'Edit expense' : 'New expense'}</Text>
+      <ScrollView style={{ backgroundColor: colors.bg }} contentContainerStyle={s.page} keyboardShouldPersistTaps="handled">
+        <Text style={s.title}>{tx ? 'edit expense ✎' : 'new expense ✿'}</Text>
         {tx && tx.category_by !== 'manual' && (
           <Text style={s.hint}>
             Category picked by {tx.category_by === 'ai' ? 'AI' : tx.category_by === 'keyword' ? 'keyword rule' : 'your past correction'}.
@@ -71,6 +106,15 @@ export function EntryModal({ api, categories, tx, onClose, onSaved }: {
           ))}
         </View>
 
+        <Text style={s.label}>Paid with</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          {PAYMENT_METHODS.map((p) => (
+            <Pressable key={p.id} style={[s.chip, p.id === method && s.chipOn]} onPress={() => setMethod(p.id === method ? '' : p.id)}>
+              <Text style={[s.chipText, p.id === method && s.chipTextOn]}>{p.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+
         <Text style={s.label}>Recipient</Text>
         <TextInput style={s.input} value={recipient} onChangeText={setRecipient} placeholder="Warung Bu Sri" />
 
@@ -80,9 +124,21 @@ export function EntryModal({ api, categories, tx, onClose, onSaved }: {
         <Text style={s.label}>Date</Text>
         <TextInput style={s.input} value={occurredAt} onChangeText={setOccurredAt} autoCapitalize="none" />
 
-        {tx?.has_image && (
-          <Image source={api.imageSource(tx.id)} style={{ width: '100%', height: 420, marginTop: 12 }} resizeMode="contain" />
-        )}
+        <Text style={s.label}>Screenshot</Text>
+        {typeof image === 'object'
+          ? <Image source={{ uri: image.uri }} style={[s.card, { width: '100%', height: 420, padding: 0 }]} resizeMode="contain" />
+          : image === 'keep' && tx?.has_image && <ReceiptImage api={api} id={tx.id} />}
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          <Pressable style={s.chip} onPress={pickImage}>
+            <Text style={s.chipText}>{typeof image === 'object' || (image === 'keep' && tx?.has_image) ? 'replace' : '+ attach screenshot'}</Text>
+          </Pressable>
+          {(typeof image === 'object' || (image === 'keep' && tx?.has_image)) && (
+            <Pressable style={s.chip} onPress={() => setImage(tx?.has_image ? 'remove' : 'keep')}>
+              <Text style={[s.chipText, { color: colors.danger }]}>remove</Text>
+            </Pressable>
+          )}
+        </View>
+        {image === 'remove' && <Text style={s.hint}>The screenshot will be deleted when you save.</Text>}
 
         <View style={s.row}>
           <Pressable style={[s.button, s.buttonGhost]} onPress={onClose} disabled={busy}>
@@ -94,7 +150,7 @@ export function EntryModal({ api, categories, tx, onClose, onSaved }: {
             </Pressable>
           )}
           <Pressable style={[s.button, { flex: 1 }]} onPress={save} disabled={busy}>
-            {busy ? <ActivityIndicator color="#fff" /> : <Text style={s.buttonText}>Save</Text>}
+            {busy ? <ActivityIndicator color={colors.card} /> : <Text style={s.buttonText}>Save</Text>}
           </Pressable>
         </View>
       </ScrollView>

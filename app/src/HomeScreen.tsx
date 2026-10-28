@@ -1,17 +1,14 @@
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
-import { Api, localIso, rupiah, Transaction } from './api';
+import { ActivityIndicator, FlatList, Platform, Pressable, RefreshControl, Text, View } from 'react-native';
+import { Api, localIso, monthName, PAYMENT_METHODS, paymentLabel, rupiah, shiftMonth, Transaction } from './api';
 import { EntryModal } from './EntryModal';
-import { colors, s } from './styles';
+import { notify } from './notify';
+import { colors, fonts, s } from './styles';
 
-function shiftMonth(month: string, by: number) {
-  const [y, m] = month.split('-').map(Number);
-  const d = new Date(y, m - 1 + by, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
+const cream = '#fffaee';
 
-export function HomeScreen({ api, onSettings }: { api: Api; onSettings: () => void }) {
+export function HomeScreen({ api, onSettings, onCalendar }: { api: Api; onSettings: () => void; onCalendar: () => void }) {
   const [month, setMonth] = useState(() => localIso().slice(0, 7));
   const [items, setItems] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
@@ -26,7 +23,7 @@ export function HomeScreen({ api, onSettings }: { api: Api; onSettings: () => vo
       setItems(list);
       setCategories(cats);
     } catch (e) {
-      Alert.alert("Couldn't load", String((e as Error).message));
+      notify("Couldn't load", String((e as Error).message));
     } finally {
       setLoading(false);
     }
@@ -41,17 +38,24 @@ export function HomeScreen({ api, onSettings }: { api: Api; onSettings: () => vo
   }, [items]);
   const total = totals.reduce((sum, [, v]) => sum + v, 0);
 
+  const byMethod = useMemo(
+    () => PAYMENT_METHODS
+      .map((p) => ({ label: p.label, sum: items.filter((t) => t.payment_method === p.id).reduce((a, t) => a + t.amount, 0) }))
+      .filter((p) => p.sum > 0),
+    [items],
+  );
+
   async function scan() {
     const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
     if (picked.canceled) return;
     const asset = picked.assets[0];
     setScanning(true);
     try {
-      const tx = await api.scan(asset.uri, asset.mimeType ?? 'image/jpeg');
+      const tx = await api.scan(asset);
       await load();
       setEditing(tx); // show the result so a wrong read can be fixed right away
     } catch (e) {
-      Alert.alert("Couldn't read screenshot", String((e as Error).message));
+      notify("Couldn't read screenshot", String((e as Error).message));
     } finally {
       setScanning(false);
     }
@@ -63,51 +67,78 @@ export function HomeScreen({ api, onSettings }: { api: Api; onSettings: () => vo
         data={items}
         keyExtractor={(t) => String(t.id)}
         contentContainerStyle={[s.page, { paddingBottom: 120 }]}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.red} colors={[colors.red]} />}
         ListHeaderComponent={
-          <View style={{ gap: 8 }}>
+          <View style={{ gap: 10 }}>
             <View style={[s.row, { marginTop: 0, justifyContent: 'space-between' }]}>
-              <Text style={s.title}>Okane</Text>
-              <Pressable onPress={onSettings}><Text style={{ color: colors.accent, fontWeight: '600' }}>Settings</Text></Pressable>
+              <Text style={[s.title, { fontSize: 44, marginBottom: 0 }]}>
+                okane <Text style={{ color: colors.blue, fontSize: 26 }}>✦ ✿</Text>
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 6 }}>
+                {Platform.OS === 'web' && (
+                  <Pressable style={[s.chip, { borderRadius: 12 }]} onPress={load}>
+                    <Text style={s.chipText}>↻</Text>
+                  </Pressable>
+                )}
+                <Pressable style={[s.chip, { borderRadius: 12 }]} onPress={onCalendar}>
+                  <Text style={s.chipText}>calendar</Text>
+                </Pressable>
+                <Pressable style={[s.chip, { borderRadius: 12 }]} onPress={onSettings}>
+                  <Text style={s.chipText}>settings</Text>
+                </Pressable>
+              </View>
             </View>
-            <View style={[s.row, { marginTop: 0, justifyContent: 'space-between' }]}>
-              <Pressable onPress={() => setMonth(shiftMonth(month, -1))}><Text style={{ fontSize: 22, color: colors.accent }}>‹</Text></Pressable>
-              <Text style={{ fontSize: 16, fontWeight: '600', color: colors.text }}>{month}</Text>
-              <Pressable onPress={() => setMonth(shiftMonth(month, 1))}><Text style={{ fontSize: 22, color: colors.accent }}>›</Text></Pressable>
+
+            <View style={s.ribbon}>
+              <Pressable onPress={() => setMonth(shiftMonth(month, -1))} hitSlop={12}><Text style={s.ribbonText}>‹</Text></Pressable>
+              <Text style={s.ribbonText}>{monthName(month)}</Text>
+              <Pressable onPress={() => setMonth(shiftMonth(month, 1))} hitSlop={12}><Text style={s.ribbonText}>›</Text></Pressable>
             </View>
-            <View style={s.card}>
-              <Text style={s.hint}>Spent this month</Text>
-              <Text style={{ fontSize: 28, fontWeight: '700', color: colors.text }}>{rupiah(total)}</Text>
-              {totals.map(([cat, v]) => (
-                <View key={cat} style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
-                  <Text style={{ color: colors.text }}>{cat}</Text>
-                  <Text style={{ color: colors.muted }}>{rupiah(v)}</Text>
-                </View>
-              ))}
+
+            <View style={s.blueCard}>
+              <View style={s.stitch}>
+                <Text style={{ fontFamily: fonts.hand, fontSize: 17, color: cream }}>spent this month</Text>
+                <Text style={{ fontFamily: fonts.handBold, fontSize: 40, color: cream }}>{rupiah(total)}</Text>
+                {totals.map(([cat, v]) => (
+                  <View key={cat} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Text style={{ fontFamily: fonts.hand, fontSize: 17, color: colors.ink }}>{cat}</Text>
+                    <Text style={{ fontFamily: fonts.handBold, fontSize: 17, color: colors.ink }}>{rupiah(v)}</Text>
+                  </View>
+                ))}
+                {byMethod.length > 0 && (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                    {byMethod.map((p) => (
+                      <View key={p.label} style={[s.chip, { paddingHorizontal: 8 }]}>
+                        <Text style={[s.chipText, { fontSize: 14 }]}>{p.label} · {rupiah(p.sum)}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
             </View>
           </View>
         }
-        ListEmptyComponent={!loading ? <Text style={[s.hint, { textAlign: 'center', marginTop: 24 }]}>No expenses this month.</Text> : undefined}
+        ListEmptyComponent={!loading ? <Text style={[s.hint, { textAlign: 'center', marginTop: 24 }]}>no expenses this month ♡</Text> : undefined}
         renderItem={({ item }) => (
           <Pressable style={s.card} onPress={() => setEditing(item)}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Text style={{ fontWeight: '600', color: colors.text, flex: 1 }} numberOfLines={1}>{item.recipient || '(no recipient)'}</Text>
-              <Text style={{ fontWeight: '600', color: colors.text }}>{rupiah(item.amount)}</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
+              <Text style={[s.money, { flex: 1 }]} numberOfLines={1}>{item.recipient || '(no recipient)'}</Text>
+              <Text style={[s.money, { color: colors.red }]}>{rupiah(item.amount)}</Text>
             </View>
             <Text style={s.hint} numberOfLines={1}>
-              {item.category} · {item.occurred_at.slice(0, 10)}{item.remark ? ` · ${item.remark}` : ''}
+              {[item.category, item.occurred_at.slice(0, 10), paymentLabel(item.payment_method), item.remark].filter(Boolean).join(' · ')}
             </Text>
           </Pressable>
         )}
       />
 
-      <View style={[s.row, { position: 'absolute', left: 16, right: 16, bottom: 32 }]}>
-        <Pressable style={[s.button, s.buttonGhost, { flex: 1, backgroundColor: colors.card }]} onPress={() => setEditing('new')}>
-          <Text style={s.buttonGhostText}>+ Manual</Text>
+      <View style={[s.row, { position: 'absolute', left: 16, right: 16, bottom: 32, maxWidth: 528, marginHorizontal: 'auto' }]}>
+        <Pressable style={[s.button, s.buttonGhost, { flex: 1 }]} onPress={() => setEditing('new')}>
+          <Text style={s.buttonGhostText}>+ manual</Text>
         </Pressable>
         {api.canScan && (
           <Pressable style={[s.button, { flex: 1 }]} onPress={scan} disabled={scanning}>
-            {scanning ? <ActivityIndicator color="#fff" /> : <Text style={s.buttonText}>Scan screenshot</Text>}
+            {scanning ? <ActivityIndicator color={cream} /> : <Text style={s.buttonText}>scan screenshot</Text>}
           </Pressable>
         )}
       </View>
