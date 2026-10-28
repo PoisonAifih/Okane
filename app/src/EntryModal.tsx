@@ -2,10 +2,9 @@ import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { Api, Draft, localIso, PAYMENT_METHODS, PaymentMethod, Transaction } from './api';
+import { DateField } from './DateField';
 import { confirmDestructive, notify } from './notify';
 import { colors, s } from './styles';
-
-const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
 
 /** Native Image can send the auth header; on web we fetch it ourselves and show a blob URL. */
 function ReceiptImage({ api, id }: { api: Api; id: number }) {
@@ -65,7 +64,6 @@ export function EntryModal({ api, categories, tx, onClose, onSaved }: {
     const value = Number(amount.replace(/[^\d.]/g, ''));
     if (!value) return notify('Enter an amount');
     if (!category) return notify('Pick a category');
-    if (!ISO.test(occurredAt)) return notify('Date must look like 2026-10-28T13:45');
     const d: Draft = { amount: value, category, recipient: recipient.trim(), remark: remark.trim(), occurred_at: occurredAt, payment_method: method };
     run(async () => {
       const saved = tx ? await api.update(tx.id, d) : await api.addManual(d);
@@ -116,13 +114,13 @@ export function EntryModal({ api, categories, tx, onClose, onSaved }: {
         </View>
 
         <Text style={s.label}>Recipient</Text>
-        <TextInput style={s.input} value={recipient} onChangeText={setRecipient} placeholder="Warung Bu Sri" />
+        <TextInput style={s.input} value={recipient} onChangeText={setRecipient} placeholder="Nitnet" />
 
         <Text style={s.label}>Remark</Text>
-        <TextInput style={s.input} value={remark} onChangeText={setRemark} placeholder="makan siang" />
+        <TextInput style={s.input} value={remark} onChangeText={setRemark} placeholder="Lunch" />
 
         <Text style={s.label}>Date</Text>
-        <TextInput style={s.input} value={occurredAt} onChangeText={setOccurredAt} autoCapitalize="none" />
+        <DateField value={occurredAt} onChange={setOccurredAt} withTime />
 
         <Text style={s.label}>Screenshot</Text>
         {typeof image === 'object'

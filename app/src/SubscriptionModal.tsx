@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { Api, Cycle, localIso, PAYMENT_METHODS, PaymentMethod, Subscription } from './api';
+import { DateField } from './DateField';
 import { confirmDestructive, notify } from './notify';
 import { colors, s } from './styles';
 
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const CYCLES: { id: Cycle; label: string }[] = [{ id: 'monthly', label: 'Monthly' }, { id: 'yearly', label: 'Yearly' }];
 
 /** Add a subscription (sub = null) or edit/delete one. */
@@ -40,7 +40,6 @@ export function SubscriptionModal({ api, categories, sub, onClose, onSaved }: {
     if (!name.trim()) return notify('Enter a name');
     if (!value) return notify('Enter an amount');
     if (!category) return notify('Pick a category');
-    if (!DATE.test(startDate)) return notify('Date must look like 2026-10-28');
     run(() => api.saveSubscription(
       { name: name.trim(), amount: value, category, payment_method: method, cycle, start_date: startDate },
       sub?.id,
@@ -73,7 +72,7 @@ export function SubscriptionModal({ api, categories, sub, onClose, onSaved }: {
         </View>
 
         <Text style={s.label}>First payment date</Text>
-        <TextInput style={s.input} value={startDate} onChangeText={setStartDate} autoCapitalize="none" placeholder="2026-10-28" />
+        <DateField value={startDate} onChange={setStartDate} />
         <Text style={s.hint}>
           {cycle === 'monthly' ? 'Due on this day every month.' : 'Due on this date every year.'}
         </Text>
