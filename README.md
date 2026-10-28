@@ -102,7 +102,7 @@ builds):
 
 ```
 okane.example.com {
-	@api path /health /categories /transactions /transactions/* /subscriptions /subscriptions/*
+	@api path /health /capabilities /categories /transactions /transactions/* /subscriptions /subscriptions/*
 	handle @api {
 		reverse_proxy 127.0.0.1:8000
 	}
