@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
-import { Api, Due, localIso, monthName, paymentLabel, rupiah, shiftMonth, Subscription } from './api';
+import { Api, Due, localIso, monthName, paymentLabel, money, shiftMonth, Subscription } from './api';
 import { confirmDestructive, notify } from './notify';
 import { SubscriptionModal } from './SubscriptionModal';
 import { colors, fonts, s } from './styles';
@@ -95,9 +95,9 @@ export function CalendarScreen({ api, onBack }: { api: Api; onBack: () => void }
         <View style={s.blueCard}>
           <View style={s.stitch}>
             <Text style={{ fontFamily: fonts.hand, fontSize: 17, color: cream }}>subscriptions this month</Text>
-            <Text style={{ fontFamily: fonts.handBold, fontSize: 36, color: cream }}>{rupiah(spent + pending)}</Text>
+            <Text style={{ fontFamily: fonts.handBold, fontSize: 36, color: cream }}>{money(spent + pending)}</Text>
             <Text style={{ fontFamily: fonts.hand, fontSize: 17, color: colors.ink }}>
-              spent {rupiah(spent)} · still to pay {rupiah(pending)}
+              spent {money(spent)} · still to pay {money(pending)}
             </Text>
           </View>
         </View>
@@ -144,7 +144,7 @@ export function CalendarScreen({ api, onBack }: { api: Api; onBack: () => void }
               <Pressable style={{ flex: 1 }} onPress={() => setEditing(d.subscription)}>
                 <Text style={s.money} numberOfLines={1}>{d.subscription.name}</Text>
                 <Text style={s.hint} numberOfLines={1}>
-                  {[d.due_date.slice(8, 10) + ' ' + monthName(month).split(' ')[0], rupiah(d.subscription.amount), paymentLabel(d.subscription.payment_method)].filter(Boolean).join(' · ')}
+                  {[d.due_date.slice(8, 10) + ' ' + monthName(month).split(' ')[0], money(d.subscription.amount), paymentLabel(d.subscription.payment_method)].filter(Boolean).join(' · ')}
                 </Text>
               </Pressable>
               <Pressable
@@ -168,7 +168,7 @@ export function CalendarScreen({ api, onBack }: { api: Api; onBack: () => void }
           <Pressable key={sub.id} style={s.card} onPress={() => setEditing(sub)}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
               <Text style={[s.money, { flex: 1 }]} numberOfLines={1}>{sub.name}</Text>
-              <Text style={[s.money, { color: colors.red }]}>{rupiah(sub.amount)}</Text>
+              <Text style={[s.money, { color: colors.red }]}>{money(sub.amount)}</Text>
             </View>
             <Text style={s.hint} numberOfLines={1}>
               {[sub.cycle === 'monthly' ? `monthly on the ${Number(sub.start_date.slice(8, 10))}` : `yearly on ${sub.start_date.slice(5)}`,

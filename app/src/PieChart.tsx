@@ -1,5 +1,5 @@
 import { Text, View } from 'react-native';
-import { rupiah } from './api';
+import { money } from './api';
 import { colors, fonts } from './styles';
 
 const PALETTE = ['#b4343c', '#2f5d8a', '#e0a93b', '#6f9a6a', '#d98a9a', '#7a5c99', '#c86f3d', '#4f8f8c', '#a8a07a', '#5b6274', '#e8cfa0', '#8c3b5e'];
@@ -61,7 +61,7 @@ export function PieChart({ data, size = 112 }: { data: [string, number][]; size?
             <Text style={{ flex: 1, fontFamily: fonts.hand, fontSize: 16, color: colors.ink }} numberOfLines={1}>
               {cat} <Text style={{ color: colors.card }}>{Math.round((v / total) * 100)}%</Text>
             </Text>
-            <Text style={{ fontFamily: fonts.handBold, fontSize: 16, color: colors.ink }}>{rupiah(v)}</Text>
+            <Text style={{ fontFamily: fonts.handBold, fontSize: 16, color: colors.ink }}>{money(v)}</Text>
           </View>
         ))}
       </View>

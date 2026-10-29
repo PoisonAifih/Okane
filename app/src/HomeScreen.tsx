@@ -1,7 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Platform, Pressable, RefreshControl, Text, View } from 'react-native';
-import { Api, localIso, monthName, PAYMENT_METHODS, paymentLabel, rupiah, shiftMonth, Transaction } from './api';
+import { Api, localIso, monthName, PAYMENT_METHODS, paymentLabel, money, shiftMonth, Transaction } from './api';
 import { EntryModal } from './EntryModal';
 import { notify } from './notify';
 import { PieChart } from './PieChart';
@@ -99,13 +99,13 @@ export function HomeScreen({ api, onSettings, onCalendar }: { api: Api; onSettin
             <View style={s.blueCard}>
               <View style={s.stitch}>
                 <Text style={{ fontFamily: fonts.hand, fontSize: 17, color: cream }}>spent this month</Text>
-                <Text style={{ fontFamily: fonts.handBold, fontSize: 40, color: cream }}>{rupiah(total)}</Text>
+                <Text style={{ fontFamily: fonts.handBold, fontSize: 40, color: cream }}>{money(total)}</Text>
                 <PieChart data={totals} />
                 {byMethod.length > 0 && (
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                     {byMethod.map((p) => (
                       <View key={p.label} style={[s.chip, { paddingHorizontal: 8 }]}>
-                        <Text style={[s.chipText, { fontSize: 14 }]}>{p.label} · {rupiah(p.sum)}</Text>
+                        <Text style={[s.chipText, { fontSize: 14 }]}>{p.label} · {money(p.sum)}</Text>
                       </View>
                     ))}
                   </View>
@@ -119,7 +119,7 @@ export function HomeScreen({ api, onSettings, onCalendar }: { api: Api; onSettin
           <Pressable style={s.card} onPress={() => setEditing(item)}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
               <Text style={[s.money, { flex: 1 }]} numberOfLines={1}>{item.recipient || '(no recipient)'}</Text>
-              <Text style={[s.money, { color: colors.red }]}>{rupiah(item.amount)}</Text>
+              <Text style={[s.money, { color: colors.red }]}>{money(item.amount)}</Text>
             </View>
             <Text style={s.hint} numberOfLines={1}>
               {[item.category, item.occurred_at.slice(0, 10), paymentLabel(item.payment_method), item.remark].filter(Boolean).join(' · ')}

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { AI_PROVIDERS, AiProvider, Api, Config, saveConfig } from './api';
+import { AI_PROVIDERS, AiProvider, Api, Config, CURRENCIES, homeCurrency, saveConfig, setHomeCurrency } from './api';
 import { notify } from './notify';
 import { colors, s } from './styles';
 
@@ -15,6 +15,8 @@ export function SetupScreen({ initial, onDone, onCancel }: {
   const [aiKey, setAiKey] = useState(initial?.aiKey ?? '');
   const [aiModel, setAiModel] = useState(initial?.aiModel ?? '');
   const provider = AI_PROVIDERS.find((p) => p.id === aiProvider)!;
+  const [currency, setCurrency] = useState(homeCurrency());
+  const [pickedCurrency, setPickedCurrency] = useState(false); // on a new device, keep the server's unless changed
   const [busy, setBusy] = useState(false);
 
   async function save() {
@@ -32,6 +34,10 @@ export function SetupScreen({ initial, onDone, onCancel }: {
       if (aiProvider === 'server' && !(await api.capabilities()).server_scan) {
         throw new Error('Your server has no Claude Code set up (OKANE_CLAUDE_CLI). Pick another option.');
       }
+      // the currency lives on the server so the phone and the web app agree
+      const current = (await api.settings()).currency;
+      if (pickedCurrency && currency !== current) await api.saveSettings(currency);
+      setHomeCurrency(pickedCurrency ? currency : current);
       await saveConfig(c);
       onDone(c);
     } catch (e) {
@@ -52,6 +58,19 @@ export function SetupScreen({ initial, onDone, onCancel }: {
       <Text style={s.label}>Server token</Text>
       <TextInput style={s.input} value={serverToken} onChangeText={setServerToken}
         autoCapitalize="none" autoCorrect={false} secureTextEntry placeholder="OKANE_TOKEN from your VPS" />
+
+      <Text style={s.label}>Your currency</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+        {CURRENCIES.map((c) => (
+          <Pressable key={c} style={[s.chip, c === currency && s.chipOn]} onPress={() => { setCurrency(c); setPickedCurrency(true); }}>
+            <Text style={[s.chipText, c === currency && s.chipTextOn]}>{c}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <Text style={s.hint}>
+        Totals and the pie chart are in this currency; anything you enter or scan in another one is converted at
+        today's rate.{initial && currency !== homeCurrency() ? ' Amounts you already saved are not converted.' : ''}
+      </Text>
 
       <Text style={s.label}>Read screenshots with (optional)</Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>

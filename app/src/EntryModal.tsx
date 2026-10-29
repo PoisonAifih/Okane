@@ -1,7 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { Api, Currency, CURRENCIES, Cycle, Draft, localIso, PAYMENT_METHODS, PaymentMethod, rateToIdr, rupiah, Transaction } from './api';
+import { Api, CURRENCIES, Cycle, Draft, exchangeRate, homeCurrency, localIso, money, parseAmount, PAYMENT_METHODS, PaymentMethod, Transaction } from './api';
 import { DateField } from './DateField';
 import { confirmDestructive, notify } from './notify';
 import { colors, s } from './styles';
@@ -34,10 +34,11 @@ export function EntryModal({ api, categories, tx, onClose, onSaved }: {
   onSaved: () => void;
 }) {
   const [amount, setAmount] = useState(tx ? String(tx.amount) : '');
-  // A foreign amount is converted to rupiah on save; the original goes into the remark.
-  const [currency, setCurrency] = useState<Currency>('IDR');
+  // A foreign amount is converted to your home currency on save; the original goes into the remark.
+  const home = homeCurrency();
+  const [currency, setCurrency] = useState(home);
   const [rate, setRate] = useState<number | null>(1);
-  const latestCurrency = useRef<Currency>('IDR');
+  const latestCurrency = useRef(home);
   const [category, setCategory] = useState(tx?.category ?? '');
   const [recipient, setRecipient] = useState(tx?.recipient ?? '');
   const [remark, setRemark] = useState(tx?.remark ?? '');
@@ -49,12 +50,12 @@ export function EntryModal({ api, categories, tx, onClose, onSaved }: {
   const [image, setImage] = useState<'keep' | 'remove' | ImagePicker.ImagePickerAsset>('keep');
   const [busy, setBusy] = useState(false);
 
-  async function pickCurrency(c: Currency) {
+  async function pickCurrency(c: string) {
     latestCurrency.current = c;
     setCurrency(c);
-    setRate(c === 'IDR' ? 1 : null);
+    setRate(c === home ? 1 : null);
     try {
-      const r = await rateToIdr(c);
+      const r = await exchangeRate(c, home);
       if (latestCurrency.current === c) setRate(r); // ignore a slow reply for a currency you switched away from
     } catch (e) {
       notify("Couldn't convert", String((e as Error).message));
@@ -79,12 +80,10 @@ export function EntryModal({ api, categories, tx, onClose, onSaved }: {
   }
 
   function save() {
-    const typed = currency === 'IDR'
-      ? Number(amount.replace(/[^\d]/g, ''))
-      : Number(amount.replace(',', '.').replace(/[^\d.]/g, ''));
+    const typed = parseAmount(amount, currency);
     if (!rate) return notify("No exchange rate yet", 'Wait a moment or pick another currency.');
-    const value = Math.round(typed * rate);
-    const original = currency === 'IDR' ? '' : `${currency} ${typed}`;
+    const value = Math.round(typed * rate * 100) / 100;
+    const original = currency === home ? '' : `${currency} ${typed}`;
     if (!value) return notify('Enter an amount');
     if (!category) return notify('Pick a category');
     const d: Draft = { amount: value, category, recipient: recipient.trim(), remark: original ? [remark.trim(), `(${original})`].filter(Boolean).join(' ') : remark.trim(), occurred_at: occurredAt, payment_method: method };
@@ -127,20 +126,20 @@ export function EntryModal({ api, categories, tx, onClose, onSaved }: {
           </Text>
         )}
 
-        <Text style={s.label}>Amount ({currency === 'IDR' ? 'Rp' : currency})</Text>
+        <Text style={s.label}>Amount ({currency})</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-          {CURRENCIES.map((c) => (
+          {[home, ...CURRENCIES.filter((c) => c !== home)].map((c) => (
             <Pressable key={c} style={[s.chip, c === currency && s.chipOn]} onPress={() => pickCurrency(c)}>
               <Text style={[s.chipText, c === currency && s.chipTextOn]}>{c}</Text>
             </Pressable>
           ))}
         </View>
         <TextInput style={s.input} value={amount} onChangeText={setAmount}
-          keyboardType={currency === 'IDR' ? 'numeric' : 'decimal-pad'} placeholder={currency === 'IDR' ? '25000' : '12.99'} />
-        {currency !== 'IDR' && (
+          keyboardType="decimal-pad" placeholder={currency === 'IDR' ? '25000' : '12.99'} />
+        {currency !== home && (
           <Text style={s.hint}>
             {rate
-              ? `= ${rupiah((Number(amount.replace(',', '.').replace(/[^\d.]/g, '')) || 0) * rate)}  ·  1 ${currency} = ${rupiah(rate)} today`
+              ? `= ${money((parseAmount(amount, currency) || 0) * rate)}  ·  1 ${currency} = ${money(rate)} today`
               : "getting today's rate…"}
           </Text>
         )}

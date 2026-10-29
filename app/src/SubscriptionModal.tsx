@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { Api, Cycle, localIso, PAYMENT_METHODS, PaymentMethod, Subscription } from './api';
+import { Api, Cycle, homeCurrency, localIso, parseAmount, PAYMENT_METHODS, PaymentMethod, Subscription } from './api';
 import { DateField } from './DateField';
 import { confirmDestructive, notify } from './notify';
 import { colors, s } from './styles';
@@ -36,7 +36,7 @@ export function SubscriptionModal({ api, categories, sub, onClose, onSaved }: {
   }
 
   function save() {
-    const value = Number(amount.replace(/[^\d.]/g, ''));
+    const value = parseAmount(amount, homeCurrency());
     if (!name.trim()) return notify('Enter a name');
     if (!value) return notify('Enter an amount');
     if (!category) return notify('Pick a category');
@@ -59,7 +59,7 @@ export function SubscriptionModal({ api, categories, sub, onClose, onSaved }: {
         <Text style={s.label}>Name</Text>
         <TextInput style={s.input} value={name} onChangeText={setName} placeholder="Netflix" />
 
-        <Text style={s.label}>Amount (Rp)</Text>
+        <Text style={s.label}>Amount ({homeCurrency()})</Text>
         <TextInput style={s.input} value={amount} onChangeText={setAmount} keyboardType="numeric" placeholder="186000" />
 
         <Text style={s.label}>Repeats</Text>

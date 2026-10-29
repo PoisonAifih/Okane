@@ -154,6 +154,19 @@ export class Api {
     return this.req<string[]>('/categories');
   }
 
+  /** Older servers have no /settings; they store everything as rupiah. */
+  settings() {
+    return this.req<{ currency: string }>('/settings').catch(() => ({ currency: 'IDR' }));
+  }
+
+  saveSettings(currency: string) {
+    return this.req<{ currency: string }>('/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currency }),
+    });
+  }
+
   list(month: string) {
     return this.req<Transaction[]>(`/transactions?month=${month}`);
   }
@@ -234,21 +247,42 @@ export class Api {
   }
 }
 
-export const CURRENCIES = ['IDR', 'USD', 'SGD', 'EUR', 'JPY', 'MYR', 'AUD', 'GBP', 'KRW', 'CNY'] as const;
-export type Currency = (typeof CURRENCIES)[number];
+const SYMBOLS: Record<string, string> = {
+  IDR: 'Rp', USD: '$', SGD: 'S$', EUR: '€', JPY: '¥', MYR: 'RM', AUD: 'A$', GBP: '£', KRW: '₩', CNY: 'CN¥',
+  THB: '฿', PHP: '₱', VND: '₫', INR: '₹', HKD: 'HK$', TWD: 'NT$', CAD: 'C$', CHF: 'CHF', NZD: 'NZ$',
+};
+export const CURRENCIES = Object.keys(SYMBOLS);
+const NO_CENTS = ['IDR', 'JPY', 'KRW', 'VND'];
 
-/** Today's rupiah for 1 unit of `currency` (free daily rates, no key needed). */
-export async function rateToIdr(currency: Currency) {
-  if (currency === 'IDR') return 1;
-  const res = await fetch(`https://open.er-api.com/v6/latest/${currency}`);
-  const body = await res.json();
-  const rate = body?.rates?.IDR;
-  if (body?.result !== 'success' || typeof rate !== 'number') throw new Error("Couldn't get today's exchange rate");
-  return rate as number;
+/** The currency every amount is stored in, set from the server's settings when the app starts. */
+let home = 'IDR';
+export const homeCurrency = () => home;
+export function setHomeCurrency(c: string) { home = c; }
+
+export const hasCents = (c: string) => !NO_CENTS.includes(c);
+
+/** What the user typed, as a number: "25.000" is 25000 in rupiah, "12,99" is 12.99 in dollars. */
+export function parseAmount(text: string, currency: string) {
+  return hasCents(currency) ? Number(text.replace(',', '.').replace(/[^\d.]/g, '')) : Number(text.replace(/\D/g, ''));
 }
 
-export function rupiah(n: number) {
-  return 'Rp ' + Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+/** Amount in `currency` (default: home) styled the local way, e.g. "Rp 25.000" or "$ 1,250.50". */
+export function money(n: number, currency = home) {
+  const cents = hasCents(currency);
+  const [whole, frac] = Math.abs(n).toFixed(cents ? 2 : 0).split('.');
+  const sep = currency === 'IDR' || currency === 'VND' || currency === 'EUR' ? ['.', ','] : [',', '.'];
+  const text = whole.replace(/\B(?=(\d{3})+(?!\d))/g, sep[0]) + (frac && frac !== '00' ? sep[1] + frac : '');
+  return `${n < 0 ? '-' : ''}${SYMBOLS[currency] ?? currency} ${text}`;
+}
+
+/** Today's value of 1 `from` in `to` (free daily rates, no key needed). */
+export async function exchangeRate(from: string, to: string) {
+  if (from === to) return 1;
+  const res = await fetch(`https://open.er-api.com/v6/latest/${from}`);
+  const body = await res.json();
+  const rate = body?.rates?.[to];
+  if (body?.result !== 'success' || typeof rate !== 'number') throw new Error("Couldn't get today's exchange rate");
+  return rate as number;
 }
 
 export function shiftMonth(month: string, by: number) {

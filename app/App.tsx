@@ -2,7 +2,7 @@ import { Gaegu_400Regular, Gaegu_700Bold, useFonts } from '@expo-google-fonts/ga
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import { Api, Config, loadConfig } from './src/api';
+import { Api, Config, loadConfig, setHomeCurrency } from './src/api';
 import { CalendarScreen } from './src/CalendarScreen';
 import { HomeScreen } from './src/HomeScreen';
 import { SetupScreen } from './src/SetupScreen';
@@ -14,13 +14,20 @@ export default function App() {
   const [view, setView] = useState<'home' | 'calendar'>('home');
   const [fontsLoaded] = useFonts({ Gaegu_400Regular, Gaegu_700Bold });
   const api = useMemo(() => (config ? new Api(config) : null), [config]);
+  // bumped once the server's home currency is known, so amounts render in it
+  const [currencyReady, setCurrencyReady] = useState<Api | null>(null);
 
   useEffect(() => {
     loadConfig().then(setConfig);
   }, []);
 
+  useEffect(() => {
+    if (!api) return;
+    api.settings().then((st) => { setHomeCurrency(st.currency); setCurrencyReady(api); });
+  }, [api]);
+
   let screen;
-  if (config === undefined || !fontsLoaded) {
+  if (config === undefined || !fontsLoaded || (api && currencyReady !== api && !editingSettings)) {
     screen = <View style={{ flex: 1, justifyContent: 'center', backgroundColor: colors.bg }}><ActivityIndicator color={colors.red} /></View>;
   } else if (!api || editingSettings) {
     screen = (
