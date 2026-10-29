@@ -234,6 +234,19 @@ export class Api {
   }
 }
 
+export const CURRENCIES = ['IDR', 'USD', 'SGD', 'EUR', 'JPY', 'MYR', 'AUD', 'GBP', 'KRW', 'CNY'] as const;
+export type Currency = (typeof CURRENCIES)[number];
+
+/** Today's rupiah for 1 unit of `currency` (free daily rates, no key needed). */
+export async function rateToIdr(currency: Currency) {
+  if (currency === 'IDR') return 1;
+  const res = await fetch(`https://open.er-api.com/v6/latest/${currency}`);
+  const body = await res.json();
+  const rate = body?.rates?.IDR;
+  if (body?.result !== 'success' || typeof rate !== 'number') throw new Error("Couldn't get today's exchange rate");
+  return rate as number;
+}
+
 export function rupiah(n: number) {
   return 'Rp ' + Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 }
