@@ -287,6 +287,8 @@ class SubscriptionPatch(BaseModel):
 
 class PayIn(BaseModel):
     due_date: date
+    # link an expense you already logged instead of creating a new one
+    transaction_id: int | None = None
 
 
 def get_sub(conn, sub_id: int):
@@ -378,6 +380,13 @@ def mark_spent(sub_id: int, body: PayIn):
         if due != body.due_date:
             raise HTTPException(422, f"{sub['name']} isn't due on {body.due_date}.")
         try:
+            if body.transaction_id is not None:
+                tx = get_row(conn, body.transaction_id)
+                if tx["subscription_id"] is not None:
+                    raise HTTPException(409, "That expense already belongs to a subscription.")
+                conn.execute("UPDATE transactions SET subscription_id = ?, due_date = ? WHERE id = ?",
+                             (sub_id, due.isoformat(), tx["id"]))
+                return row_out(get_row(conn, tx["id"]))
             cur = conn.execute(
                 "INSERT INTO transactions (amount, currency, occurred_at, recipient, remark, payment_method, "
                 "category, category_by, subscription_id, due_date) VALUES (?, ?, ?, ?, ?, ?, ?, 'manual', ?, ?)",
