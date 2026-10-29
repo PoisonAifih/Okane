@@ -1,7 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { Api, Draft, localIso, PAYMENT_METHODS, PaymentMethod, Transaction } from './api';
+import { Api, Cycle, Draft, localIso, PAYMENT_METHODS, PaymentMethod, Transaction } from './api';
 import { DateField } from './DateField';
 import { confirmDestructive, notify } from './notify';
 import { colors, s } from './styles';
@@ -39,6 +39,8 @@ export function EntryModal({ api, categories, tx, onClose, onSaved }: {
   const [remark, setRemark] = useState(tx?.remark ?? '');
   const [method, setMethod] = useState<PaymentMethod>(tx?.payment_method ?? '');
   const [occurredAt, setOccurredAt] = useState(tx?.occurred_at ?? localIso());
+  // '' = one-time; otherwise saving also starts a subscription with this expense as its first payment
+  const [repeat, setRepeat] = useState<'' | Cycle>('');
   // 'keep' leaves the stored screenshot alone; a picked asset is uploaded on save.
   const [image, setImage] = useState<'keep' | 'remove' | ImagePicker.ImagePickerAsset>('keep');
   const [busy, setBusy] = useState(false);
@@ -67,6 +69,18 @@ export function EntryModal({ api, categories, tx, onClose, onSaved }: {
     const d: Draft = { amount: value, category, recipient: recipient.trim(), remark: remark.trim(), occurred_at: occurredAt, payment_method: method };
     run(async () => {
       const saved = tx ? await api.update(tx.id, d) : await api.addManual(d);
+      if (repeat) {
+        try {
+          const start = occurredAt.slice(0, 10);
+          const sub = await api.saveSubscription({
+            name: d.recipient || d.remark || category, amount: value, category,
+            payment_method: method, cycle: repeat, start_date: start,
+          });
+          await api.markSpent(sub.id, start, saved.id);
+        } catch (e) {
+          notify('Saved, but the subscription was not', String((e as Error).message));
+        }
+      }
       try {
         if (typeof image === 'object') await api.attachImage(saved.id, image);
         else if (image === 'remove' && tx?.has_image) await api.removeImage(saved.id);
@@ -121,6 +135,20 @@ export function EntryModal({ api, categories, tx, onClose, onSaved }: {
 
         <Text style={s.label}>Date</Text>
         <DateField value={occurredAt} onChange={setOccurredAt} withTime />
+
+        {!tx?.subscription_id && (
+          <>
+            <Text style={s.label}>Repeats</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {([['', 'one-time'], ['monthly', 'monthly'], ['yearly', 'yearly']] as const).map(([id, text]) => (
+                <Pressable key={id} style={[s.chip, id === repeat && s.chipOn]} onPress={() => setRepeat(id)}>
+                  <Text style={[s.chipText, id === repeat && s.chipTextOn]}>{text}</Text>
+                </Pressable>
+              ))}
+            </View>
+            {repeat && <Text style={s.hint}>Adds a subscription named after the recipient, due every {repeat === 'monthly' ? 'month' : 'year'} from this date. It shows on the calendar.</Text>}
+          </>
+        )}
 
         <Text style={s.label}>Screenshot</Text>
         {typeof image === 'object'

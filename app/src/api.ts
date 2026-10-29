@@ -217,11 +217,12 @@ export class Api {
     return this.req<{ deleted: number }>(`/subscriptions/${id}`, { method: 'DELETE' });
   }
 
-  markSpent(id: number, dueDate: string) {
+  /** Mark a due date as spent: creates the expense, or links `transactionId` if you already logged it. */
+  markSpent(id: number, dueDate: string, transactionId?: number) {
     return this.req<Transaction>(`/subscriptions/${id}/pay`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ due_date: dueDate }),
+      body: JSON.stringify({ due_date: dueDate, transaction_id: transactionId }),
     });
   }
 
