@@ -37,6 +37,12 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- app-wide preferences, e.g. currency = the code every amount is stored in
+CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
 -- recipient -> category, learned from your corrections
 CREATE TABLE IF NOT EXISTS learned_rules (
     recipient_key TEXT PRIMARY KEY,

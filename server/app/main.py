@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 from . import db
 from .categorize import CATEGORIES, categorize, learn
-from . import extract
+from . import extract, rates
 
 TOKEN = os.environ.get("OKANE_TOKEN", "")
 if len(TOKEN) < 16:
@@ -51,7 +51,7 @@ class ManualEntry(BaseModel):
     recipient: str = ""
     remark: str = ""
     payment_method: PaymentMethod = ""
-    currency: str = "IDR"
+    currency: str | None = None  # defaults to your home currency
     occurred_at: str | None = None
 
 
@@ -95,6 +95,11 @@ def check_duplicate(conn, image_hash: str, tx_id: int | None = None) -> None:
         raise HTTPException(409, f"This screenshot was already added (#{dup['id']}).")
 
 
+def home_currency(conn) -> str:
+    row = conn.execute("SELECT value FROM settings WHERE key = 'currency'").fetchone()
+    return row["value"] if row else "IDR"
+
+
 def check_category(category: str) -> None:
     if category not in CATEGORIES:
         raise HTTPException(422, f"Unknown category. Use one of: {', '.join(CATEGORIES)}")
@@ -109,6 +114,25 @@ def health():
 def capabilities():
     """server_scan: screenshots can be read here without the app sending an AI key."""
     return {"server_scan": bool(extract.CLAUDE_CLI)}
+
+
+class SettingsIn(BaseModel):
+    currency: str = Field(pattern=r"^[A-Z]{3}$")
+
+
+@app.get("/settings", dependencies=[Depends(require_token)])
+def get_settings():
+    with db.connect() as conn:
+        return {"currency": home_currency(conn)}
+
+
+@app.put("/settings", dependencies=[Depends(require_token)])
+def put_settings(body: SettingsIn):
+    """Changing the currency doesn't convert amounts already saved."""
+    with db.connect() as conn:
+        conn.execute("INSERT INTO settings (key, value) VALUES ('currency', ?) "
+                     "ON CONFLICT (key) DO UPDATE SET value = excluded.value", (body.currency,))
+        return {"currency": body.currency}
 
 
 @app.get("/categories", dependencies=[Depends(require_token)])
@@ -138,7 +162,7 @@ def add_manual(entry: ManualEntry):
         cur = conn.execute(
             "INSERT INTO transactions (amount, currency, occurred_at, recipient, remark, payment_method, category, "
             "category_by) VALUES (?, ?, ?, ?, ?, ?, ?, 'manual')",
-            (entry.amount, entry.currency, occurred_at, entry.recipient, entry.remark, entry.payment_method,
+            (entry.amount, entry.currency or home_currency(conn), occurred_at, entry.recipient, entry.remark, entry.payment_method,
              entry.category),
         )
         if entry.recipient:
@@ -183,6 +207,18 @@ def scan(
     if not data["is_receipt"] or data["amount"] <= 0:
         raise HTTPException(422, "Couldn't find a payment in this image.")
 
+    # keep every amount in your home currency so totals add up; the original goes in the remark
+    with db.connect() as conn:
+        home = home_currency(conn)
+    src = (data["currency"] or home).upper()
+    if src != home:
+        try:
+            converted = rates.convert(data["amount"], src, home)
+        except rates.RateError as e:
+            raise HTTPException(502, str(e))
+        data["remark"] = " ".join(filter(None, [data["remark"], f"({src} {data['amount']:g})"]))
+        data["amount"] = round(converted, 2)
+
     occurred_at = data["occurred_at"] or datetime.now().isoformat(timespec="seconds")
     filename = uuid.uuid4().hex + IMAGE_TYPES[file.content_type]
     (db.IMAGE_DIR / filename).write_bytes(image)
@@ -193,7 +229,7 @@ def scan(
             "INSERT INTO transactions (amount, currency, occurred_at, recipient, remark, source_app, "
             "payment_method, category, category_by, image_file, image_hash) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (data["amount"], data["currency"] or "IDR", occurred_at, data["recipient"], data["remark"],
+            (data["amount"], home, occurred_at, data["recipient"], data["remark"],
              data["source_app"], data["payment_method"], category, how, filename, image_hash),
         )
         return row_out(get_row(conn, cur.lastrowid))
@@ -273,7 +309,7 @@ class SubscriptionIn(BaseModel):
     payment_method: PaymentMethod = ""
     cycle: Cycle
     start_date: date
-    currency: str = "IDR"
+    currency: str | None = None  # defaults to your home currency
 
 
 class SubscriptionPatch(BaseModel):
@@ -321,7 +357,7 @@ def add_subscription(sub: SubscriptionIn):
         cur = conn.execute(
             "INSERT INTO subscriptions (name, amount, currency, category, payment_method, cycle, start_date) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (sub.name.strip(), sub.amount, sub.currency, sub.category, sub.payment_method, sub.cycle,
+            (sub.name.strip(), sub.amount, sub.currency or home_currency(conn), sub.category, sub.payment_method, sub.cycle,
              sub.start_date.isoformat()),
         )
         return dict(get_sub(conn, cur.lastrowid))

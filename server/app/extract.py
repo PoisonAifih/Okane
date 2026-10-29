@@ -36,7 +36,7 @@ PROMPT = f"""This is a screenshot of a payment or transfer receipt from a bank o
 
 Extract:
 - amount: the amount paid, as a plain number (Rp 25.000 -> 25000). 0 if not visible.
-- currency: ISO code, usually IDR.
+- currency: ISO 4217 code of the amount shown (IDR for Rp, USD for $, ...).
 - occurred_at: transaction date-time as ISO 8601 (YYYY-MM-DDTHH:MM:SS). Empty string if not shown.
 - recipient: the merchant or person paid. Do NOT include account numbers.
 - remark: the note / berita / keterangan the payer wrote, if any.
@@ -97,7 +97,7 @@ def normalize(d: dict) -> dict:
     method, category = text("payment_method"), text("suggested_category")
     return {
         "amount": amount,
-        "currency": text("currency") or "IDR",
+        "currency": text("currency").upper(),  # "" = not shown; the server assumes your home currency
         "occurred_at": occurred_at,
         "recipient": text("recipient"),
         "remark": text("remark"),
