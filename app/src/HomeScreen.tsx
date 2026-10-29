@@ -4,6 +4,7 @@ import { ActivityIndicator, FlatList, Platform, Pressable, RefreshControl, Text,
 import { Api, localIso, monthName, PAYMENT_METHODS, paymentLabel, rupiah, shiftMonth, Transaction } from './api';
 import { EntryModal } from './EntryModal';
 import { notify } from './notify';
+import { PieChart } from './PieChart';
 import { colors, fonts, s } from './styles';
 
 const cream = '#fffaee';
@@ -99,12 +100,7 @@ export function HomeScreen({ api, onSettings, onCalendar }: { api: Api; onSettin
               <View style={s.stitch}>
                 <Text style={{ fontFamily: fonts.hand, fontSize: 17, color: cream }}>spent this month</Text>
                 <Text style={{ fontFamily: fonts.handBold, fontSize: 40, color: cream }}>{rupiah(total)}</Text>
-                {totals.map(([cat, v]) => (
-                  <View key={cat} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <Text style={{ fontFamily: fonts.hand, fontSize: 17, color: colors.ink }}>{cat}</Text>
-                    <Text style={{ fontFamily: fonts.handBold, fontSize: 17, color: colors.ink }}>{rupiah(v)}</Text>
-                  </View>
-                ))}
+                <PieChart data={totals} />
                 {byMethod.length > 0 && (
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                     {byMethod.map((p) => (
