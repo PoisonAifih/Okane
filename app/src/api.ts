@@ -179,9 +179,10 @@ export class Api {
     });
   }
 
+  /** One expense per payment found; a history screenshot can hold several. `skipped` were already saved. */
   scan(asset: ImagePicker.ImagePickerAsset) {
     const form = imageForm(asset);
-    return this.req<Transaction>('/transactions/scan', {
+    return this.req<{ transactions: Transaction[]; skipped: number }>('/transactions/scan', {
       method: 'POST',
       // the key only travels with scans; the server passes it on and never stores it
       headers: { 'X-AI-Provider': this.c.aiProvider, 'X-AI-Key': this.c.aiKey, 'X-AI-Model': this.c.aiModel },
