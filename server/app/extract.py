@@ -1,6 +1,7 @@
 """Read a payment screenshot with an AI model.
 
-Three routes, all returning the same normalized dict:
+Three routes, all returning the same normalized list of payments (one for a receipt, one per row
+of a transaction history):
 - Anthropic API (official SDK, structured output)
 - OpenAI-compatible APIs: OpenRouter, Gemini, OpenAI (raw HTTP, JSON asked for in the prompt)
 - Claude Code CLI on this machine (`claude -p`), for personal use with your own Claude login
@@ -31,22 +32,29 @@ OPENAI_COMPAT = {
 # Path to the `claude` binary; unset disables the server-side route.
 CLAUDE_CLI = os.environ.get("OKANE_CLAUDE_CLI", "")
 
-PROMPT = f"""This is a screenshot of a payment or transfer receipt from a bank or e-wallet app \
-(often Indonesian, e.g. BCA, Mandiri, BRI, GoPay, OVO, DANA, ShopeePay, QRIS).
+PROMPT = f"""This is a screenshot from a bank or e-wallet app (often Indonesian, e.g. BCA, Mandiri, BRI, \
+GoPay, OVO, DANA, ShopeePay, QRIS). It is either a single payment receipt or a transaction history \
+listing several transactions.
 
-Extract:
-- amount: the amount paid, as a plain number (Rp 25.000 -> 25000). 0 if not visible.
+List every payment where money went OUT: purchases, bills, transfers sent. Skip money coming IN \
+(top-ups shown as incoming such as "Isi Saldo" with a +, cashback, refunds, transfers received) and \
+skip rows cut off so that their amount isn't visible. If nothing qualifies, return an empty list.
+
+For each payment:
+- amount: the amount paid, as a plain number (Rp 25.000 -> 25000).
 - currency: ISO 4217 code of the amount shown (IDR for Rp, USD for $, ...).
-- occurred_at: transaction date-time as ISO 8601 (YYYY-MM-DDTHH:MM:SS). Empty string if not shown.
+- occurred_at: date-time as ISO 8601 (YYYY-MM-DDTHH:MM:SS); if only the date is shown use T00:00:00. \
+Empty string if no date is shown.
 - recipient: the merchant or person paid. Do NOT include account numbers.
 - remark: the note / berita / keterangan the payer wrote, if any.
-- source_app: which bank or e-wallet the receipt is from.
+- source_app: which bank or e-wallet the screenshot is from.
 - payment_method: "shopee" for Shopee / ShopeePay / SPayLater, "bca" for a BCA bank transfer or BCA QRIS, \
 "credit_card" if paid by credit card, empty string if none of these.
 - suggested_category: best guess, one of: {", ".join(CATEGORIES)}.
-- is_receipt: false if the image is not a payment receipt at all."""
+- top, bottom: where this payment's row or card starts and ends vertically, as a percentage of the \
+image height (0 = top edge, 100 = bottom edge). For a single receipt use 0 and 100."""
 
-SCHEMA = {
+PAYMENT = {
     "type": "object",
     "properties": {
         "amount": {"type": "number"},
@@ -57,10 +65,17 @@ SCHEMA = {
         "source_app": {"type": "string"},
         "payment_method": {"type": "string", "enum": [*PAYMENT_METHODS, ""]},
         "suggested_category": {"type": "string", "enum": CATEGORIES},
-        "is_receipt": {"type": "boolean"},
+        "top": {"type": "number"},
+        "bottom": {"type": "number"},
     },
-    "required": ["amount", "currency", "occurred_at", "recipient", "remark",
-                 "source_app", "payment_method", "suggested_category", "is_receipt"],
+    "required": ["amount", "currency", "occurred_at", "recipient", "remark", "source_app",
+                 "payment_method", "suggested_category", "top", "bottom"],
+    "additionalProperties": False,
+}
+SCHEMA = {
+    "type": "object",
+    "properties": {"payments": {"type": "array", "items": PAYMENT}},
+    "required": ["payments"],
     "additionalProperties": False,
 }
 
@@ -80,15 +95,28 @@ class ProviderError(Exception):
         self.status = status
 
 
-def normalize(d: dict) -> dict:
+def normalize(result: dict) -> list[dict]:
+    """Clean each payment; drop ones without an amount."""
+    items = result.get("payments") if isinstance(result, dict) else None
+    out = [normalize_one(d) for d in items or [] if isinstance(d, dict)]
+    return [d for d in out if d["amount"] > 0]
+
+
+def number(v, default: float) -> float:
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return default
+
+
+def normalize_one(d: dict) -> dict:
     def text(k: str) -> str:
         v = d.get(k)
         return v.strip() if isinstance(v, str) else ""
 
-    try:
-        amount = float(d.get("amount") or 0)
-    except (TypeError, ValueError):
-        amount = 0.0
+    amount = number(d.get("amount"), 0.0)
+    top = min(max(number(d.get("top"), 0.0), 0.0), 100.0)
+    bottom = min(max(number(d.get("bottom"), 100.0), 0.0), 100.0)
     occurred_at = text("occurred_at")
     try:
         datetime.fromisoformat(occurred_at)
@@ -104,7 +132,8 @@ def normalize(d: dict) -> dict:
         "source_app": text("source_app"),
         "payment_method": method if method in PAYMENT_METHODS else "",
         "suggested_category": category if category in CATEGORIES else None,
-        "is_receipt": bool(d.get("is_receipt", amount > 0)),
+        "top": top,
+        "bottom": bottom if bottom > top else 100.0,
     }
 
 
@@ -119,12 +148,12 @@ def parse_json(text: str) -> dict:
         raise ExtractionError("The model returned malformed JSON.")
 
 
-def extract_anthropic(image: bytes, media_type: str, api_key: str) -> dict:
+def extract_anthropic(image: bytes, media_type: str, api_key: str) -> list[dict]:
     client = anthropic.Anthropic(api_key=api_key)
     try:
         response = client.beta.messages.create(
             model=MODEL,
-            max_tokens=4000,
+            max_tokens=8000,
             betas=["server-side-fallback-2026-07-01"],
             fallbacks="default",
             output_config={"effort": "low", "format": {"type": "json_schema", "schema": SCHEMA}},
@@ -153,7 +182,7 @@ def extract_anthropic(image: bytes, media_type: str, api_key: str) -> dict:
     return normalize(json.loads(text))
 
 
-def extract_openai_compat(image: bytes, media_type: str, provider: str, api_key: str, model: str) -> dict:
+def extract_openai_compat(image: bytes, media_type: str, provider: str, api_key: str, model: str) -> list[dict]:
     name, url = OPENAI_COMPAT[provider]
     if not model:
         raise ProviderError(400, f"Set a model for {name} in Settings.")
@@ -183,7 +212,7 @@ def extract_openai_compat(image: bytes, media_type: str, provider: str, api_key:
     return normalize(parse_json(text or ""))
 
 
-def extract_claude_cli(image: bytes, ext: str) -> dict:
+def extract_claude_cli(image: bytes, ext: str) -> list[dict]:
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / f"receipt{ext}"
         path.write_bytes(image)

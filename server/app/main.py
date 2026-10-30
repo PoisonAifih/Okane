@@ -1,5 +1,6 @@
 import calendar
 import hashlib
+import io
 import os
 import sqlite3
 import secrets
@@ -10,6 +11,7 @@ from typing import Literal
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from PIL import Image
 from pydantic import BaseModel, Field
 
 from . import db
@@ -194,45 +196,85 @@ def scan(
 
     try:
         if provider == "server":
-            data = extract.extract_claude_cli(image, IMAGE_TYPES[file.content_type])
+            payments = extract.extract_claude_cli(image, IMAGE_TYPES[file.content_type])
         elif provider == "anthropic":
-            data = extract.extract_anthropic(image, file.content_type, key)
+            payments = extract.extract_anthropic(image, file.content_type, key)
         else:
-            data = extract.extract_openai_compat(image, file.content_type, provider, key, x_ai_model.strip())
+            payments = extract.extract_openai_compat(image, file.content_type, provider, key, x_ai_model.strip())
     except extract.ProviderError as e:
         raise HTTPException(e.status, str(e))
     except extract.ExtractionError as e:
         raise HTTPException(422, str(e))
-
-    if not data["is_receipt"] or data["amount"] <= 0:
+    if not payments:
         raise HTTPException(422, "Couldn't find a payment in this image.")
 
     # keep every amount in your home currency so totals add up; the original goes in the remark
     with db.connect() as conn:
         home = home_currency(conn)
-    src = (data["currency"] or home).upper()
-    if src != home:
-        try:
-            converted = rates.convert(data["amount"], src, home)
-        except rates.RateError as e:
-            raise HTTPException(502, str(e))
-        data["remark"] = " ".join(filter(None, [data["remark"], f"({src} {data['amount']:g})"]))
-        data["amount"] = round(converted, 2)
+    for data in payments:
+        src = (data["currency"] or home).upper()
+        if src != home:
+            try:
+                converted = rates.convert(data["amount"], src, home)
+            except rates.RateError as e:
+                raise HTTPException(502, str(e))
+            data["remark"] = " ".join(filter(None, [data["remark"], f"({src} {data['amount']:g})"]))
+            data["amount"] = round(converted, 2)
 
-    occurred_at = data["occurred_at"] or datetime.now().isoformat(timespec="seconds")
-    filename = uuid.uuid4().hex + IMAGE_TYPES[file.content_type]
-    (db.IMAGE_DIR / filename).write_bytes(image)
-
+    # A history screenshot lists several payments: each gets its own row cut out of the image,
+    # and rows already saved from an earlier, overlapping screenshot are skipped.
+    many = len(payments) > 1
+    saved, skipped = [], 0
     with db.connect() as conn:
-        category, how = categorize(conn, data["recipient"], data["remark"], data["suggested_category"])
-        cur = conn.execute(
-            "INSERT INTO transactions (amount, currency, occurred_at, recipient, remark, source_app, "
-            "payment_method, category, category_by, image_file, image_hash) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (data["amount"], home, occurred_at, data["recipient"], data["remark"],
-             data["source_app"], data["payment_method"], category, how, filename, image_hash),
-        )
-        return row_out(get_row(conn, cur.lastrowid))
+        for data in payments:
+            occurred_at = data["occurred_at"] or datetime.now().isoformat(timespec="seconds")
+            if many and already_saved(conn, data["amount"], occurred_at, data["recipient"]):
+                skipped += 1
+                continue
+            if many:
+                crop = crop_rows(image, data["top"], data["bottom"])
+                crop_hash = hashlib.sha256(crop).hexdigest()
+                if conn.execute("SELECT 1 FROM transactions WHERE image_hash = ?", (crop_hash,)).fetchone():
+                    skipped += 1
+                    continue
+                stored, stored_hash, ext = crop, crop_hash, IMAGE_TYPES[file.content_type]
+            else:
+                stored, stored_hash, ext = image, image_hash, IMAGE_TYPES[file.content_type]
+            filename = uuid.uuid4().hex + ext
+            (db.IMAGE_DIR / filename).write_bytes(stored)
+            category, how = categorize(conn, data["recipient"], data["remark"], data["suggested_category"])
+            cur = conn.execute(
+                "INSERT INTO transactions (amount, currency, occurred_at, recipient, remark, source_app, "
+                "payment_method, category, category_by, image_file, image_hash) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (data["amount"], home, occurred_at, data["recipient"], data["remark"],
+                 data["source_app"], data["payment_method"], category, how, filename, stored_hash),
+            )
+            saved.append(row_out(get_row(conn, cur.lastrowid)))
+    return {"transactions": saved, "skipped": skipped}
+
+
+def already_saved(conn, amount: float, occurred_at: str, recipient: str) -> bool:
+    """Same amount and recipient on the same day: a row seen in an earlier screenshot."""
+    return conn.execute(
+        "SELECT 1 FROM transactions WHERE abs(amount - ?) < 0.005 AND substr(occurred_at, 1, 10) = ? "
+        "AND lower(recipient) = lower(?)", (amount, occurred_at[:10], recipient),
+    ).fetchone() is not None
+
+
+def crop_rows(image: bytes, top: float, bottom: float) -> bytes:
+    """The full-width strip between `top` and `bottom` (percent of height), with a little margin."""
+    with Image.open(io.BytesIO(image)) as im:
+        fmt = im.format
+        h = im.height
+        y0 = max(0, int((top - 1.5) / 100 * h))
+        y1 = min(h, int((bottom + 1.5) / 100 * h))
+        strip = im.crop((0, y0, im.width, y1))
+        if fmt == "JPEG" and strip.mode != "RGB":
+            strip = strip.convert("RGB")
+        out = io.BytesIO()
+        strip.save(out, format=fmt, **({"quality": 90} if fmt == "JPEG" else {}))
+        return out.getvalue()
 
 
 @app.patch("/transactions/{tx_id}", dependencies=[Depends(require_token)])
