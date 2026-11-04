@@ -6,11 +6,16 @@ amount, recipient, remark and payment method and sort it into a category. Track 
 - `server/`  FastAPI + SQLite backend, runs on your VPS. Stores entries, subscriptions and screenshots.
 - `app/`  Expo (React Native) app for Android, iOS and the browser.
 
+<img width="289" height="630" alt="image" src="https://github.com/user-attachments/assets/375bea40-de13-40f2-8b59-b87e38757726" />
+<img width="288" height="631" alt="image" src="https://github.com/user-attachments/assets/12d7c6b8-d958-40ba-bd4f-d69ae1a5b933" />
+<img width="288" height="633" alt="image" src="https://github.com/user-attachments/assets/4b1fe41e-0923-47ee-93dc-b079c4dff9a7" />
+
+
 ## How categories are picked
 
 1. **Your corrections.** When you change an entry's category, Okane remembers it for that recipient.
 2. **Keyword rules** in `server/app/categorize.py` (e.g. "warung", "GoFood" → food; "Indomaret" → groceries).
-3. **Claude's guess** from the screenshot.
+3. **AI's guess** from the screenshot.
 
 Manual entries always use the category you choose.
 
