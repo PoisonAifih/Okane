@@ -20,7 +20,7 @@ import httpx
 from .categorize import CATEGORIES
 
 MODEL = "claude-opus-5-5"
-PAYMENT_METHODS = ["shopee", "bca", "credit_card"]
+PAYMENT_METHODS = ["shopee", "bank", "credit_card"]
 
 # OpenAI-style chat completion endpoints; the device picks one by name and sends its own key.
 OPENAI_COMPAT = {
@@ -48,8 +48,8 @@ Empty string if no date is shown.
 - recipient: the merchant or person paid. Do NOT include account numbers.
 - remark: the note / berita / keterangan the payer wrote, if any.
 - source_app: which bank or e-wallet the screenshot is from.
-- payment_method: "shopee" for Shopee / ShopeePay / SPayLater, "bca" for a BCA bank transfer or BCA QRIS, \
-"credit_card" if paid by credit card, empty string if none of these.
+- payment_method: "shopee" for Shopee / ShopeePay / SPayLater, "bank" for a bank transfer or bank QRIS \
+(any bank, e.g. BCA, Mandiri, BRI), "credit_card" if paid by credit card, empty string if none of these.
 - suggested_category: best guess, one of: {", ".join(CATEGORIES)}.
 - top, bottom: where this payment's row or card starts and ends vertically, as a percentage of the \
 image height (0 = top edge, 100 = bottom edge). For a single receipt use 0 and 100."""
@@ -123,6 +123,8 @@ def normalize_one(d: dict) -> dict:
     except ValueError:
         occurred_at = ""
     method, category = text("payment_method"), text("suggested_category")
+    if method == "bca":
+        method = "bank"
     return {
         "amount": amount,
         "currency": text("currency").upper(),  # "" = not shown; the server assumes your home currency
