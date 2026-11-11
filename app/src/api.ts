@@ -50,16 +50,17 @@ export type SubscriptionDraft = Pick<Subscription, 'name' | 'amount' | 'category
 /** One subscription payment in a month; transaction_id is set once it's marked as spent. */
 export type Due = { subscription: Subscription; due_date: string; transaction_id: number | null };
 
-export type PaymentMethod = 'shopee' | 'bca' | 'credit_card' | '';
+export type PaymentMethod = 'shopee' | 'bank' | 'credit_card' | '';
 
 export const PAYMENT_METHODS: { id: Exclude<PaymentMethod, ''>; label: string }[] = [
   { id: 'shopee', label: 'Shopee' },
-  { id: 'bca', label: 'BCA transfer' },
+  { id: 'bank', label: 'Bank transfer' },
   { id: 'credit_card', label: 'Credit card' },
 ];
 
-export function paymentLabel(m: PaymentMethod) {
-  return PAYMENT_METHODS.find((p) => p.id === m)?.label ?? '';
+export function paymentLabel(m: PaymentMethod | 'bca') {
+  const id = m === 'bca' ? 'bank' : m;
+  return PAYMENT_METHODS.find((p) => p.id === id)?.label ?? '';
 }
 
 export type Draft = Partial<Pick<Transaction, 'amount' | 'occurred_at' | 'recipient' | 'remark' | 'category' | 'payment_method'>>;

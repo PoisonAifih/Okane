@@ -21,7 +21,7 @@ Manual entries always use the category you choose.
 
 ## Payment methods
 
-Each expense can be tagged Shopee, BCA transfer or Credit card. Scans guess it from the screenshot; the home
+Each expense can be tagged Shopee, Bank transfer or Credit card. Scans guess it from the screenshot; the home
 screen totals each method for the month.
 
 ## Screenshots

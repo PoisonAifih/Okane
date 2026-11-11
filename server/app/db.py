@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     recipient   TEXT NOT NULL DEFAULT '',
     remark      TEXT NOT NULL DEFAULT '',
     source_app  TEXT NOT NULL DEFAULT '',
-    payment_method TEXT NOT NULL DEFAULT '',  -- shopee | bca | credit_card | '' (unknown)
+    payment_method TEXT NOT NULL DEFAULT '',  -- shopee | bank | credit_card | '' (unknown)
     category    TEXT NOT NULL,
     category_by TEXT NOT NULL,          -- manual | learned | keyword | ai
     image_file  TEXT,                   -- filename in IMAGE_DIR, NULL for manual entries
@@ -69,3 +69,5 @@ def init() -> None:
                 conn.execute(f"ALTER TABLE transactions ADD COLUMN {name} {decl}")
         # one expense per subscription payment, so marking twice can't double count
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS tx_subscription_due ON transactions (subscription_id, due_date)")
+        conn.execute("UPDATE transactions SET payment_method = 'bank' WHERE payment_method = 'bca'")
+        conn.execute("UPDATE subscriptions SET payment_method = 'bank' WHERE payment_method = 'bca'")

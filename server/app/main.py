@@ -25,7 +25,7 @@ if len(TOKEN) < 16:
 MAX_IMAGE_BYTES = 5 * 1024 * 1024  # Claude's per-image limit
 IMAGE_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 EDITABLE = ("amount", "currency", "occurred_at", "recipient", "remark", "category", "payment_method")
-PaymentMethod = Literal["shopee", "bca", "credit_card", ""]
+PaymentMethod = Literal["shopee", "bank", "credit_card", ""]
 Cycle = Literal["monthly", "yearly"]
 
 db.init()
