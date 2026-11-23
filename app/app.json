@@ -48,6 +48,9 @@
         "projectId": "8ad8da45-15ee-4dad-bacd-8ddfd5f5fb99"
       }
     },
-    "owner": "poisonaifihs-team"
+    "owner": "poisonaifihs-team",
+    "experiments": {
+      "baseUrl": "/okane"
+    }
   }
 }
