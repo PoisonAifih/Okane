@@ -119,7 +119,7 @@ okane.example.com {
 }
 ```
 
-Open `https://okane.example.com`; the server URL is pre-filled, so you only paste the token.
+Open `https://okane.example.com`, then enter the server URL and token.
 
 For local testing with `npx expo start --web` (served from `localhost:8081`), start the server with
 `OKANE_CORS_ORIGINS=http://localhost:8081`. Leave it unset in production.

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { AI_PROVIDERS, AiProvider, Api, Config, CURRENCIES, homeCurrency, saveConfig, setHomeCurrency } from './api';
 import { notify } from './notify';
 import { colors, s } from './styles';
@@ -9,7 +9,7 @@ export function SetupScreen({ initial, onDone, onCancel }: {
   onDone: (c: Config) => void;
   onCancel?: () => void;
 }) {
-  const [serverUrl, setServerUrl] = useState(initial?.serverUrl ?? (Platform.OS === 'web' ? window.location.origin + (process.env.EXPO_BASE_URL ?? '') : 'https://'));
+  const [serverUrl, setServerUrl] = useState(initial?.serverUrl ?? '');
   const [serverToken, setServerToken] = useState(initial?.serverToken ?? '');
   const [aiProvider, setAiProvider] = useState<AiProvider>(initial?.aiProvider ?? '');
   const [aiKey, setAiKey] = useState(initial?.aiKey ?? '');
